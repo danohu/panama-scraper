@@ -1,0 +1,14 @@
+# use regex syntax.
+syntax: regexp
+
+^sqlitedump$
+^log.txt$
+^records.*$
+^.*\.elc$
+^.*\.pyc$
+^.*\~$
+\..*\.swp$
+\..*\.swo$
+^\.sw.$
+\.\#.*$
+^.*\#$
