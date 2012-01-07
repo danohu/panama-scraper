@@ -1,0 +1,8 @@
+
+Requirements:
+[these requirements could mostly be eliminated quite easily]
+
+web.py
+simplejson
+mysqldb
+
