@@ -1,10 +1,10 @@
 #!/usr/bin/python
 import web
 import urllib
-from settings import basedir
+from panama.settings import basedir
 BADDATA = 'DATA COULD NOT BE SCRAPED'
 import traceback
-from datamodel import Person, Company, SQLObjectNotFound
+from panama.datamodel import Person, Company, SQLObjectNotFound
 #database schema
 
 #render = web.templaterender('templates/')
@@ -25,6 +25,12 @@ Panama corporate records have recently been made available <a href="https://www.
 Once you have found a company, you can use the official site to find the complete entry in the Companies Register, and <a href="https://www.registro-publico.gob.pa/RediWeb/default.asp">scans</a> of documents they have submitted.
 """
 
+def escape_name(name):
+    try:
+        return urllib.quote(name)
+    except Exception:
+        return name
+
 class indexPage:
 
     def GET(self):
@@ -36,7 +42,7 @@ class indexPage:
         ' % BASEURL
         html += ABOUTTEXT
         html += '</html>'
-        print(html)
+        return html
 
 def google(text):
     return '(<a href="http://www.google.com/search?q=%%22%s%%22">google</a>)' % text
@@ -69,15 +75,16 @@ class personPage:
         for company in agencies:
             html += '<li><a href="%s/company/id/%s">%s</a></li>' % (BASEURL, company.recordid, company.name)
         html += '</ul>'
-        print(html)
+        return html
 
 class companyByNumberPage:
 
     def GET(self, companyid):
         web.header('Content-Type', 'text/html') 
         try:
+            companyid = int(companyid)
             record = Company.byRecordid(companyid)
-        except SQLObjectNotFound:
+        except ValueError, SQLObjectNotFound:
             print 'No company with ID %s' % companyid
             return
         subscribers = record.subscribers
@@ -103,7 +110,7 @@ class companyByNumberPage:
             html += record.registerdate.strftime('%F')
         html += '<h3><a href="https://www.registro-publico.gob.pa/RediWeb/default.asp">Look up complete file</a></h3> </br>'
         html += '(search for %s as "Numero de Ficha")' % record.recordid
-        print(html)
+        return html
 
 class searchPersonPage:
 
@@ -122,10 +129,16 @@ class searchPersonPage:
         html += '<h2>Search results</h2><h3>searching for %s</h3><ul>' % sqlquery
         people = Person.select(sqlquery)
         for thisone in people:
-            html += "<li><a href='%s/person/%s'>%s</a></li>" %(BASEURL, thisone.name, thisone.name)
+            html += "<li><a href='%s/person/%s'>%s</a></li>" %(BASEURL, escape_name(thisone.name), thisone.name)
         html += '</ul>'
         html += HTMLTAIL
-        print(html)
-web.wsgi.runwsgi = lambda func, addr=None: web.wsgi.runfcgi(func, addr)
+        return html
+application = web.application(urls, globals()).wsgifunc()
+
+#web.wsgi.runwsgi = lambda func, addr=None: web.wsgi.runfcgi(func, addr)
+#if __name__ == '__main__':
+#    app = web.application(urls, globals()).wsgifunc()
+#    #app.runwsgi()
 if __name__ == '__main__':
-    web.run(urls, globals())
+    app =web.application(urls, globals())
+    app.run()
