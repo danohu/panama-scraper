@@ -1,7 +1,10 @@
 from sqlobject import *
 
-#'connection = connectionForURI('mysql://USERNAME:PASSWORD@localhost/panama?use_unicode=1&charset=utf8')
-connection = connectionForURI('sqlite:/:memory:')
+try: # import from a local key repository
+    from doh.private import PANAMA_DB_URL
+    connection = connectionForURI(PANAMA_DB_URL)
+except ImportError:
+    connection = connectionForURI('sqlite:/:memory:')
 connection.encoding = 'utf-8'
 sqlhub.processConnection = connection
 
