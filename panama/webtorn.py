@@ -36,8 +36,11 @@ class indexPage(tornado.web.RequestHandler):
         html = '<html><h2>Search Panama company records</h2>\
         <form action="%s/personsearch" method="get">\
         <b>Name of person</b><input type = "text" name = "name"><br>\
-        <input type="submit" value="Search">\
-        ' % BASEURL
+        <input type="submit" value="Search"></form><br/>\
+        <form action="%s/search/company" method="get">\
+        <b>Name of company</b><input type = "text" name = "name"><br>\
+        <input type="submit" value="Search"></form><br/>\
+        ' % (BASEURL, BASEURL)
         html += ABOUTTEXT
         html += '</html>'
         self.write(html)
@@ -136,6 +139,24 @@ class searchPersonPage(tornado.web.RequestHandler):
         html += HTMLTAIL
         self.write(html)
 
+class searchCompanyPage(tornado.web.RequestHandler):
+
+    def get(self, rawSearchterm = u''):
+        if rawSearchterm is u'':
+            arguments = parse_qs(self.request.query)
+            rawSearchterm = arguments.get('name')[0] 
+        html = HTMLHEAD
+        unquotedTerm = urllib.unquote(rawSearchterm).upper()
+        liketerm = Company.sqlrepr('%%%s%%' % unquotedTerm)
+        sqlquery = "company.name LIKE %s" % liketerm
+        html += '<h2>Company Search results</h2><h3>searching for %s</h3><ul>' % sqlquery
+        people = Company.select(sqlquery)
+        for thisone in people:
+            html += "<li><a href='%s/company/id/%s'>%s</a></li>" %(BASEURL, thisone.recordid, thisone.name)
+        html += '</ul>'
+        html += HTMLTAIL
+        self.write(html)
+
 urls = [
         ('/?', indexPage,),
         ('/person/(.*)', personPage,),
@@ -143,6 +164,8 @@ urls = [
         ('/company/id/?(.*)', companyByNumberPage),
         ('/personsearch/?(.*)', searchPersonPage),
         ('/search/person/?(.*)', searchPersonPage),
+        ('/search/company/?(.*)', searchCompanyPage),
+        
         ]
 for url in urls[:]:
     newurl = ('/panama' + url[0], url[1])
