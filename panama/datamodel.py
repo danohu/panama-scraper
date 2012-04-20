@@ -1,5 +1,10 @@
 from sqlobject import *
 
+"""
+OBSOLETE: we're moving to a more generic system,
+using sqlalchemy
+"""
+
 try: # import from a local key repository
     from doh.private import PANAMA_DB_URL
     connection = connectionForURI(PANAMA_DB_URL)

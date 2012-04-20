@@ -9,8 +9,10 @@ settings = ThuleSettings()
 BADDATA = 'DATA COULD NOT BE SCRAPED'
 import codecs
 import traceback
-from datamodel import Person, Company, SQLObjectNotFound
+#from datamodel import Person, Company, SQLObjectNotFound
+from gendb import Person, Company, Link, Session
 #database sc:ehema
+import os
 from optparse import OptionParser
 parser = OptionParser()
 parser.add_option("-t", "--highnum", dest="highnum", type = "int", default = 400000)
@@ -30,6 +32,12 @@ class PanamaScraper(BaseScraper):
     highnum = 40
     lownum = 1
     basedir = '/home/dan/panama/records/'
+
+    officials = {
+       'presidente' : 'president',
+       'secretario' : 'secretary',
+       'tesorero'   : 'treasurer',
+       }
 
     def __init__(self, highnum = None, lownum = None, *args, **kwargs):
         self.highnum = highnum and self.highnum
@@ -75,6 +83,11 @@ class PanamaScraper(BaseScraper):
         value = tagtext(marker.findNext('td')).strip()
         return value or BADDATA
 
+    def wideHead(self, soup, term):
+        marker = soup.find(hastext('font', term)) or nosoup
+        value = tagtext(marker.findNext('td', width='49%')).strip()
+        return value or BADDATA
+
     def dictOfTitles(self, soup):
         table = soup.find(hastext('font', 'T.tulo del Dignatario')).findNext('table')
         titledict = {}
@@ -101,42 +114,46 @@ class PanamaScraper(BaseScraper):
         return directors
 
     def processRecord(self, rawtext):
-        #clean up the markup a bit - document has two HEADs, which confuses beautiful soup
+        session = Session()
         datadict = self.scrapeData(rawtext)
         crecord = Company(
                         name = datadict['nombredelasociedad'],
-                        recordid = int(datadict['nodeficha']))
-        try:
+                        recordid = int(datadict['nodeficha']),
+                        scrape_date = None,
+                        scrape_source = None,
+                        is_current = None,
+                        data = None)
+        try: # XXX does this really need to be a register thing
             dateobj = time.strptime(datadict['registerdate'], '%d-%m-%Y')
             cleandate = time.strftime('%Y-%m-%d', dateobj)
-            crecord.registerdate = cleandate
+            crecord.date_founded = cleandate
         except ValueError:
             log('invalid date: %s' % datadict['registerdate'])
         for subscriber in datadict['suscriptores']:
-            try:
-                #print repr(subscriber)
-                #su = UnicodeDammit(repr(subscriber))
-                #print(su)
-                #su = unicode(subscriber, 'utf-8')
-                #print subscriber
-                susc = Person.byName(subscriber)
-            except SQLObjectNotFound:
-                susc = Person(name = subscriber)
-            susc.addSubscribership(crecord)
+            crecord.addPerson(
+                    role = 'subscriber',
+                    name = subscriber,
+                    session = session)
         if datadict['agent']:
-            agentname = datadict['agent']
-            try:
-                agent = Person.byName(agentname)
-            except SQLObjectNotFound:
-                agent = Person(name = agentname)
-            agent.addAgency(crecord)
+            crecord.addPerson(
+                    role = 'agent',
+                    name = datadict['agent'],
+                    session = session)
         for director in datadict['directors']:
-            dname = director
-            try:
-                drecord = Person.byName(dname)
-            except SQLObjectNotFound:
-                drecord = Person(name = dname)
-            drecord.addDirectorship(crecord)
+            crecord.addPerson(
+                    role = 'director',
+                    name = director,
+                    session = session)
+        for (role, name) in datadict['titles'].items():
+            role = role.lower()
+            title = self.officials.get(role, role)
+            crecord.addPerson(
+                    role = title,
+                    name = name,
+                    session = session)
+        session.commit()
+        return crecord
+
 
 class PanamaCompanyScraper(PanamaScraper):
 
@@ -165,20 +182,24 @@ class PanamaCompanyScraper(PanamaScraper):
             'Provincia Notaria',
             'Duración',
             'Domicilio',
-            'Status de la Prenda',)
-        #for heading in headings:
-        #    scrapeddata[heading] = smallHead(soup, heading)
-        scrapeddata['representantelegal'] = tagtext(soup.find(hastext('font', '(?m)Representante Legal')).findNext('table')).strip()
+            #'Status de la Prenda',
+            )
+        for heading in headings:
+            scrapeddata[heading] = self.smallHead(soup, heading)
+        scrapeddata['status_de_la_prenda'] = self.wideHead(soup,
+                'Prenda')
         scrapeddata['titles'] = self.dictOfTitles(soup)
         scrapeddata['directors'] = self.listOfDirectors(soup)
         scrapeddata['suscriptores'] = self.listFromTable(soup, 'Nombre de los Suscriptores')
-        scrapeddata['capital'] = self.listFromTable(soup, 'Capital')
+
+        # we don't really care about the boilerplate explanations of share
+        # distribution
+        # scrapeddata['capital'] = self.listFromTable(soup, 'Capital')
+        # scrapeddata['representantelegal'] = tagtext(soup.find(hastext('font', '(?m)Representante Legal')).findNext('table')).strip()
         for item in scrapeddata:
             if not(isinstance(scrapeddata[item], unicode)):
                 print(scrapeddata[item])
         return scrapeddata
-
-    pass
 
 class PanamaFoundationScraper(PanamaScraper):
     
@@ -200,35 +221,54 @@ class PanamaFoundationScraper(PanamaScraper):
         scrapeddata['registerdate'] = self.smallHead(soup, 'Fecha de Registro:')
         scrapeddata['agent'] = self.smallHead(soup, 'Agente Residente')
         headings = (
-            'Fecha de Registro', 
-            'Status', 
-            'No. de Escritura', 
+            
+            #basics
+            'Fecha de Registro', #date registered
+            'Status', #status
+            
+            # Apostiled document (???)
+            'No. de Escritura',  # signed document number
+            'Fecha de Escritura', # date of signed documents
+            
+            # registration details
             'Notaria', #may be odd
-            'Provincia Notaria',
-            'Duración',
-            'Domicilio',
-            'Status de la Prenda',)
+            'Provincia Notaria', #notary provice
+            'Duraci.n', #duration
+            'Domicilio', #domicile
+
+            # Capital
+            'Moneda', # currency
+            'Monto de Capital', # amount of capital
+
+            #tax details
+            'Fecha de Pago', # date paid company tax
+            'Agente Residente', #resident agent
+
+            #'Status de la Prenda',
+            )
         #for heading in headings:
         #    scrapeddata[heading] = smallHead(soup, heading)
         #scrapeddata['representantelegal'] = tagtext(soup.find(hastext('font', '(?m)Representante Legal')).findNext('table')).strip()
         scrapeddata['titles'] = self.dictOfTitles(soup)
         scrapeddata['directors'] = self.listOfDirectors(soup)
         scrapeddata['suscriptores'] = self.listFromTable(soup, 'Nombre de los Suscriptores')
-        scrapeddata['capital'] = self.listFromTable(soup, 'Capital')
+        #scrapeddata['capital'] = self.listFromTable(soup, 'Capital')
         for item in scrapeddata:
             if not(isinstance(scrapeddata[item], unicode)):
                 print(scrapeddata[item])
         return scrapeddata
 
-    pass
 
 class TestScraper(object):
     testfilepaths = ()
     scraper = None #add this in subclasses
+    test_data_dir = os.path.join(os.path.dirname(__file__), 'testdata')
 
     def run(self): #xxx retrofit into this the whole nosetests shit
         self.test_parsing()
-        self.test_db
+        # test_db disabled, since it seems to be runnign
+        # into the live DB
+        #self.test_db
 
     def test_parsing(self):
         results = []
@@ -245,15 +285,15 @@ class TestScraper(object):
 
 
 class TestPanamaCompanyScraper(TestScraper):
-    testfilepaths = ('./testdata/sample_panama_company.html',)
-
     def __init__(self, *args, **kwargs):
+        self.testfilepaths = (os.path.join(self.test_data_dir, 'sample_panama_company.html'),)
+
         self.scraper = PanamaCompanyScraper()
 
 class TestPanamaFoundationScraper(TestScraper):
-    testfilepaths = ('./testdata/sample_panama_foundation.html',)
 
     def __init__(self, *args, **kwargs):
+        self.testfilepaths = (os.path.join(self.test_data_dir, 'sample_panama_foundation.html'),)
         self.scraper = PanamaFoundationScraper()
      
 """
