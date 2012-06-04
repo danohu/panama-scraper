@@ -15,6 +15,7 @@ sqlhub.processConnection = connection
 
 class Person(SQLObject):
     name = UnicodeCol(alternateID=True, length = 120, varchar = True)
+    hidden = BoolCol(default=False)
     directorships = RelatedJoin('Company', intermediateTable = 'directors', addRemoveName = 'Directorship')
     subscriberships = RelatedJoin('Company', intermediateTable = 'subscribers', addRemoveName = 'Subscribership')
     agencys = RelatedJoin('Company', intermediateTable = 'agents', addRemoveName = 'Agency')
@@ -22,6 +23,7 @@ class Person(SQLObject):
 class Company(SQLObject):
     recordid = IntCol(alternateID = True)
     name = UnicodeCol() #may not be unique?
+    hidden = BoolCol(default=False)
     registerdate = DateCol(default = None)
     #persons = RelatedJoin('Person')
     #directors = RelatedJoin('Person')

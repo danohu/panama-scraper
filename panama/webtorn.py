@@ -30,7 +30,16 @@ def escape_name(name):
     except Exception:
         return name
 
-class indexPage(tornado.web.RequestHandler):
+
+class PanamaHandler(tornado.web.RequestHandler):
+
+    def quitWithMsg(self, msg):
+        html = "%s <b> %s </b> %s " % (HTMLHEAD, msg, HTMLTAIL)
+        self.write(html)
+        return
+
+
+class indexPage(PanamaHandler):
 
     def get(self):
         html = '<html><h2>Search Panama company records</h2>\
@@ -55,8 +64,8 @@ def getarg(fromqs, name):
         arguments = parse_qs(self.request.query)
         return arguments.get(name)[0] 
 
-class personPage(tornado.web.RequestHandler):
-
+class personPage(PanamaHandler):
+    
     def get(self, rawname = u''):
         html = ''
         rawname = getarg(rawname, 'name')
@@ -67,25 +76,31 @@ class personPage(tornado.web.RequestHandler):
             html += 'could not find %s' % name
             self.write(html)
             return
+        if record.hidden:
+            self.quitWithMsg("Details of this person are not currently available")
+            return
         subscriberships = record.subscriberships
         directorships = record.directorships
         agencies = record.agencys
         html += '<h1>%s</h1>' % name
         html += '<h2>Director</h2><ul>' 
         for company in directorships:
-            html += '<li><a href="%s/company/id/%s">%s</a></li>' % (BASEURL, company.recordid, company.name)
+            if not company.hidden:
+                html += '<li><a href="%s/company/id/%s">%s</a></li>' % (BASEURL, company.recordid, company.name)
         html += '</ul>'
         html += '<h2>Subscriber</h2><ul>' 
         for company in subscriberships:
-            html += '<li><a href="%s/company/id/%s">%s</a></li>' % (BASEURL, company.recordid, company.name)
+            if not company.hidden:
+                html += '<li><a href="%s/company/id/%s">%s</a></li>' % (BASEURL, company.recordid, company.name)
         html += '</ul>'
         html += '<h2>Agent</h2><ul>' 
         for company in agencies:
-            html += '<li><a href="%s/company/id/%s">%s</a></li>' % (BASEURL, company.recordid, company.name)
+            if not company.hidden:
+                html += '<li><a href="%s/company/id/%s">%s</a></li>' % (BASEURL, company.recordid, company.name)
         html += '</ul>'
         self.write(html)
 
-class companyByNumberPage(tornado.web.RequestHandler):
+class companyByNumberPage(PanamaHandler):
 
     def get(self, companyid=u''):
 
@@ -93,8 +108,11 @@ class companyByNumberPage(tornado.web.RequestHandler):
         try:
             companyid = int(companyid)
             record = Company.byRecordid(companyid)
-        except ValueError, SQLObjectNotFound:
-            print 'No company with ID %s' % companyid
+        except (ValueError, SQLObjectNotFound):
+            self.quitWithMsg('No company with ID %s' % companyid)
+            return
+        if record.hidden:
+            self.quitWithMsg('Company %s is not currently available' % companyid)
             return
         subscribers = record.subscribers
         directors = record.directors
@@ -103,17 +121,20 @@ class companyByNumberPage(tornado.web.RequestHandler):
         html += '<h3><a href="%s">Full Details</a></h3>' % companyurl
         html += '<h2>Directors</h2><ul>' 
         for director in directors:
-            html += '<li><a href="%s/person/%s">%s</a> %s </li>' % (BASEURL, director.name, director.name, google(director.name))
+            if not director.hidden:
+                html += '<li><a href="%s/person/%s">%s</a> %s </li>' % (BASEURL, director.name, director.name, google(director.name))
         html += '</ul>'
         html += '<h2>Subscribers</h2><ul>' 
         for subscriber in subscribers:
-            html += '<li><a href="%s/person/%s">%s</a></li>' % (BASEURL, subscriber.name, subscriber.name)
+            if not subscriber.hidden:
+                html += '<li><a href="%s/person/%s">%s</a></li>' % (BASEURL, subscriber.name, subscriber.name)
         html += '</ul>'
         agentlist = record.agent
         if len(agentlist):
             agent = agentlist[0]
-            html += '<h2>Agent</h2>'
-            html += '<ul><li><a href="%s/person/%s">%s</a></li></ul>' % (BASEURL, agent.name, agent.name)
+            if not agent.hidden:
+                html += '<h2>Agent</h2>'
+                html += '<ul><li><a href="%s/person/%s">%s</a></li></ul>' % (BASEURL, agent.name, agent.name)
         if record.registerdate:
             html += '<h3>Date Registered</h3>'
             html += record.registerdate.strftime('%F')
@@ -121,7 +142,7 @@ class companyByNumberPage(tornado.web.RequestHandler):
         html += '(search for %s as "Numero de Ficha")' % record.recordid
         self.write(html)
 
-class searchPersonPage(tornado.web.RequestHandler):
+class searchPersonPage(PanamaHandler):
 
     def get(self, rawSearchterm = u''):
         if rawSearchterm is u'':
@@ -134,12 +155,13 @@ class searchPersonPage(tornado.web.RequestHandler):
         html += '<h2>Search results</h2><h3>searching for %s</h3><ul>' % sqlquery
         people = Person.select(sqlquery)
         for thisone in people:
-            html += "<li><a href='%s/person/%s'>%s</a></li>" %(BASEURL, escape_name(thisone.name), thisone.name)
+            if not thisone.hidden:
+                html += "<li><a href='%s/person/%s'>%s</a></li>" %(BASEURL, escape_name(thisone.name), thisone.name)
         html += '</ul>'
         html += HTMLTAIL
         self.write(html)
 
-class searchCompanyPage(tornado.web.RequestHandler):
+class searchCompanyPage(PanamaHandler):
 
     def get(self, rawSearchterm = u''):
         if rawSearchterm is u'':
@@ -152,7 +174,8 @@ class searchCompanyPage(tornado.web.RequestHandler):
         html += '<h2>Company Search results</h2><h3>searching for %s</h3><ul>' % sqlquery
         people = Company.select(sqlquery)
         for thisone in people:
-            html += "<li><a href='%s/company/id/%s'>%s</a></li>" %(BASEURL, thisone.recordid, thisone.name)
+            if not thisone.hidden:
+                html += "<li><a href='%s/company/id/%s'>%s</a></li>" %(BASEURL, thisone.recordid, thisone.name)
         html += '</ul>'
         html += HTMLTAIL
         self.write(html)
