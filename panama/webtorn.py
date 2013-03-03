@@ -13,7 +13,23 @@ from datamodel import Person, Company, SQLObjectNotFound
 
 #render = web.templaterender('templates/')
 
-HTMLHEAD = '<html><body>'
+HTMLHEAD = '''<html>
+ <STYLE type="text/css">
+
+.warning {
+  color: #D8000C;
+  background-color: #FFBABA;
+  font-size: 20px;
+  font-weight: bold;
+  padding: 20px;
+  margin: 20px;
+          }
+</STYLE>
+<body>
+<div class="warning">
+Beware: the information on these pages may be inaccurate or outdated. Please check any results against the <a href="http://registro-publico.gob.pa/">official registry</a>
+</div>
+'''
 HTMLTAIL = '</body></html>'
 BASEURL = '/panama'
 ABOUTTEXT = """
@@ -42,7 +58,7 @@ class PanamaHandler(tornado.web.RequestHandler):
 class indexPage(PanamaHandler):
 
     def get(self):
-        html = '<html><h2>Search Panama company records</h2>\
+        html = HTMLHEAD + '<h2>Search Panama company records</h2>\
         <form action="%s/personsearch" method="get">\
         <b>Name of person</b><input type = "text" name = "name"><br>\
         <input type="submit" value="Search"></form><br/>\
@@ -51,7 +67,7 @@ class indexPage(PanamaHandler):
         <input type="submit" value="Search"></form><br/>\
         ' % (BASEURL, BASEURL)
         html += ABOUTTEXT
-        html += '</html>'
+        html += HTMLTAIL
         self.write(html)
 
 def google(text):
